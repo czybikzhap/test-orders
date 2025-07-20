@@ -8,16 +8,13 @@ use Illuminate\Http\JsonResponse;
 
 class WarehouseController extends Controller
 {
-    /**
-     * Просмотр списка складов
-     */
     public function index(): JsonResponse
     {
         $warehouses = Warehouse::all();
-        
+
         return response()->json([
             'success' => true,
             'data' => $warehouses
         ]);
     }
-} 
+}

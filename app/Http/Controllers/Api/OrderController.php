@@ -7,20 +7,19 @@ use App\Http\Requests\OrderFilterRequest;
 use App\Http\Requests\StoreOrderRequest;
 use App\Http\Requests\UpdateOrderRequest;
 use App\Models\Order;
-use App\Models\OrderItem;
+use App\Services\OrderService;
 use App\Services\OrderValidator;
 use App\Services\StockService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
 use Exception;
 
 class OrderController extends Controller
 {
     public function __construct(
         protected StockService $stockService,
-        protected OrderValidator $validator
+        protected OrderValidator $validator,
+        protected OrderService $orderService
     ) {}
 
 
@@ -54,43 +53,21 @@ class OrderController extends Controller
     {
 
         try {
-            DB::beginTransaction();
-
-            if (!$this->stockService->checkAvailability($request->warehouse_id, $request->items)) {
-                throw new Exception('Недостаточно товаров на складе');
-            }
-
-            $order = Order::create([
-                'customer' => $request->customer,
-                'warehouse_id' => $request->warehouse_id,
-                'status' => Order::STATUS_ACTIVE,
-            ]);
-
-            foreach ($request->items as $item) {
-                OrderItem::create([
-                    'order_id' => $order->id,
-                    'product_id' => $item['product_id'],
-                    'count' => $item['count'],
-                ]);
-            }
-
-            $this->stockService->reserveStock($request->warehouse_id, $request->items);
-
-            DB::commit();
-
-            $order->load(['warehouse', 'orderItems.product']);
+            $order = $this->orderService->createOrder(
+                customer: $request->customer,
+                warehouseId: $request->warehouse_id,
+                items: $request->items
+            );
 
             return response()->json([
                 'success' => true,
-                'data' => $order
+                'data' => $order->load(['warehouse', 'orderItems.product']),
             ], 201);
 
         } catch (Exception $e) {
-            DB::rollBack();
-
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 400);
         }
     }
@@ -101,49 +78,17 @@ class OrderController extends Controller
         $this->validator->ensureIsActive($order);
 
         try {
-            DB::beginTransaction();
-
-            $oldItems = $order->orderItems->map(function ($item) {
-                return [
-                    'product_id' => $item->product_id,
-                    'count' => $item->count,
-                ];
-            })->toArray();
-
-            if ($request->has('customer')) {
-                $order->customer = $request->customer;
-            }
-
-            if ($request->has('items')) {
-                $order->orderItems()->delete();
-
-                foreach ($request->items as $item) {
-                    OrderItem::create([
-                        'order_id' => $order->id,
-                        'product_id' => $item['product_id'],
-                        'count' => $item['count'],
-                    ]);
-                }
-
-                $this->stockService->updateOrderStock($order, $oldItems, $request->items);
-            }
-
-            $order->save();
-            DB::commit();
-
-            $order->load(['warehouse', 'orderItems.product']);
+            $updatedOrder = $this->orderService->updateOrder($order, $request->validated());
 
             return response()->json([
                 'success' => true,
-                'data' => $order
+                'data' => $updatedOrder->load(['warehouse', 'orderItems.product']),
             ]);
 
         } catch (Exception $e) {
-            DB::rollBack();
-
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 400);
         }
     }
@@ -153,16 +98,20 @@ class OrderController extends Controller
     {
         $this->validator->ensureCanBeCompleted($order);
 
-        $order->status = Order::STATUS_COMPLETED;
-        $order->completed_at = now();
-        $order->save();
+        try {
+            $completedOrder = $this->orderService->completeOrder($order);
 
-        $order->load(['warehouse', 'orderItems.product']);
+            return response()->json([
+                'success' => true,
+                'data' => $completedOrder->load(['warehouse', 'orderItems.product']),
+            ]);
 
-        return response()->json([
-            'success' => true,
-            'data' => $order
-        ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 400);
+        }
     }
 
 
@@ -171,35 +120,17 @@ class OrderController extends Controller
         $this->validator->ensureCanBeCanceled($order);
 
         try {
-            DB::beginTransaction();
-
-            $items = $order->orderItems->map(function ($item) {
-                return [
-                    'product_id' => $item->product_id,
-                    'count' => $item->count,
-                ];
-            })->toArray();
-
-            $this->stockService->returnStock($order->warehouse_id, $items);
-
-            $order->status = Order::STATUS_CANCELED;
-            $order->save();
-
-            DB::commit();
-
-            $order->load(['warehouse', 'orderItems.product']);
+            $canceledOrder = $this->orderService->cancelOrder($order);
 
             return response()->json([
                 'success' => true,
-                'data' => $order
+                'data' => $canceledOrder->load(['warehouse', 'orderItems.product']),
             ]);
 
         } catch (Exception $e) {
-            DB::rollBack();
-
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 400);
         }
     }
@@ -210,39 +141,17 @@ class OrderController extends Controller
         $this->validator->ensureCanBeResumed($order);
 
         try {
-            DB::beginTransaction();
-
-            $items = $order->orderItems->map(function ($item) {
-                return [
-                    'product_id' => $item->product_id,
-                    'count' => $item->count,
-                ];
-            })->toArray();
-
-            if (!$this->stockService->checkAvailability($order->warehouse_id, $items)) {
-                throw new Exception('Недостаточно товаров на складе для возобновления заказа');
-            }
-
-            $this->stockService->reserveStock($order->warehouse_id, $items);
-
-            $order->status = Order::STATUS_ACTIVE;
-            $order->save();
-
-            DB::commit();
-
-            $order->load(['warehouse', 'orderItems.product']);
+            $resumedOrder = $this->orderService->resumeOrder($order);
 
             return response()->json([
                 'success' => true,
-                'data' => $order
+                'data' => $resumedOrder->load(['warehouse', 'orderItems.product']),
             ]);
 
         } catch (Exception $e) {
-            DB::rollBack();
-
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 400);
         }
     }

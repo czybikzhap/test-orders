@@ -9,13 +9,10 @@ use Illuminate\Http\JsonResponse;
 
 class ProductController extends Controller
 {
-    /**
-     * Просмотр списка товаров с остатками по складам
-     */
     public function index(): JsonResponse
     {
         $products = Product::with(['stocks.warehouse'])->get();
-        
+
         $productsWithStocks = $products->map(function ($product) {
             $stocks = $product->stocks->map(function ($stock) {
                 return [
@@ -24,7 +21,7 @@ class ProductController extends Controller
                     'stock' => $stock->stock,
                 ];
             });
-            
+
             return [
                 'id' => $product->id,
                 'name' => $product->name,
@@ -32,10 +29,10 @@ class ProductController extends Controller
                 'stocks' => $stocks,
             ];
         });
-        
+
         return response()->json([
             'success' => true,
             'data' => $productsWithStocks
         ]);
     }
-} 
+}

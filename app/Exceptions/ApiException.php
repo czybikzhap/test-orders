@@ -8,11 +8,13 @@ use Exception;
 
 abstract class ApiException extends Exception
 {
-    /**
-     * Абстрактный метод для формирования JSON-ответа
-     *
-     * @param Request $request
-     * @return JsonResponse
-     */
-    abstract public function render(Request $request): JsonResponse;
+    protected $statusCode = 400;
+
+    public function render(Request $request): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => $this->getMessage(),
+        ], $this->statusCode);
+    }
 }

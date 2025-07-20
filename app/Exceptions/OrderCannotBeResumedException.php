@@ -10,11 +10,4 @@ class OrderCannotBeResumedException extends ApiException
     protected $message = 'Заказ не может быть возобновлен';
     protected $code = 422;
 
-    public function render(Request $request): JsonResponse
-    {
-        return response()->json([
-            'success' => false,
-            'message' => $this->getMessage(),
-        ], $this->getCode());
-    }
 }
