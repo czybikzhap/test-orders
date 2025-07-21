@@ -2,12 +2,13 @@
 
 namespace App\Exceptions;
 
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-
 class OrderCannotBeCanceledException extends ApiException
 {
-    protected $message = 'Заказ не может быть отменен';
-    protected $code = 422;
-
+    public function __construct()
+    {
+        parent::__construct(
+            'Заказ не может быть отменен',
+            422,
+        );
+    }
 }

@@ -37,7 +37,7 @@ class OrderService
                 ]);
             }
 
-            $this->stockService->reserveStock($warehouseId, $items);
+            $this->stockService->reserveStock($warehouseId, $items, $order->id, \App\Models\StockMovement::TYPE_ORDER_CREATED);
 
             return $order;
         });
@@ -99,7 +99,7 @@ class OrderService
                 ];
             })->toArray();
 
-            $this->stockService->returnStock($order->warehouse_id, $items);
+            $this->stockService->returnStock($order->warehouse_id, $items, $order->id, \App\Models\StockMovement::TYPE_ORDER_CANCELED);
 
             $order->status = Order::STATUS_CANCELED;
             $order->save();
@@ -122,7 +122,7 @@ class OrderService
                 throw new Exception('Недостаточно товаров на складе для возобновления заказа');
             }
 
-            $this->stockService->reserveStock($order->warehouse_id, $items);
+            $this->stockService->reserveStock($order->warehouse_id, $items, $order->id, \App\Models\StockMovement::TYPE_ORDER_RESUMED);
 
             $order->status = Order::STATUS_ACTIVE;
             $order->save();

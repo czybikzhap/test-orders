@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests;
 
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class UpdateOrderRequest extends FormRequest
 {
@@ -22,7 +24,7 @@ class UpdateOrderRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'customer' => 'sometimes|string|max:255',
+            'customer' => ['string', 'regex:/[a-zA-Zа-яА-Я]/'],
             'items' => 'sometimes|array|min:1',
             'items.*.product_id' => 'required_with:items|exists:products,id',
             'items.*.count' => 'required_with:items|integer|min:1',
@@ -32,8 +34,8 @@ class UpdateOrderRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'customer.string' => 'Поле "Клиент" должно быть строкой.',
-            'customer.max' => 'Поле "Клиент" не должно превышать 255 символов.',
+            'customer.string' => 'Поле "Клиент" должно быть строкой',
+            'customer.regex' => 'Поле "Клиент" должно содержать только буквы',
 
             'items.array' => 'Поле "Товары" должно быть массивом.',
             'items.min' => 'Добавьте хотя бы один товар.',
@@ -45,5 +47,16 @@ class UpdateOrderRequest extends FormRequest
             'items.*.count.integer' => 'Количество должно быть числом.',
             'items.*.count.min' => 'Количество должно быть не меньше 1.',
         ];
+    }
+
+    protected function failedValidation(Validator $validator)
+    {
+        throw new HttpResponseException(
+            response()->json([
+                'success' => false,
+                'message' => 'Ошибка валидации',
+                'errors' => $validator->errors()
+            ], 422)
+        );
     }
 }

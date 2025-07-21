@@ -2,12 +2,14 @@
 
 namespace App\Exceptions;
 
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-
 class OrderCannotBeResumedException extends ApiException
 {
-    protected $message = 'Заказ не может быть возобновлен';
-    protected $code = 422;
-
+    public function __construct()
+    {
+        parent::__construct(
+            'Заказ не может быть возобновлен',
+            422,
+        );
+    }
 }
+

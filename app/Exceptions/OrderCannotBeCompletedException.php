@@ -2,12 +2,13 @@
 
 namespace App\Exceptions;
 
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-
 class OrderCannotBeCompletedException extends ApiException
 {
-    protected $message = 'Заказ не может быть завершен';
-    protected $code = 422;
-
+    public function __construct()
+    {
+        parent::__construct(
+            'Заказ не может быть завершен',
+            422,
+        );
+    }
 }
