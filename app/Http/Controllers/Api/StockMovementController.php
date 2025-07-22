@@ -9,11 +9,19 @@ use App\Http\Resources\StockMovementResource;
 use App\Http\Resources\StockMovementStatisticsResource;
 use App\Models\StockMovement;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
+
 
 class StockMovementController extends Controller
 {
+
+    /**
+     * Получить список складских перемещений с фильтрацией и пагинацией.
+     *
+     * @param StockMovementFilterRequest $request Запрос с параметрами фильтра и пагинации.
+     * @param StockMovementFilter $filter Применяет фильтры к запросу.
+     *
+     * @return \Illuminate\Http\JsonResponse JSON с коллекцией складских перемещений и данными пагинации.
+     */
 
     public function index(StockMovementFilterRequest $request, StockMovementFilter $filter): JsonResponse
     {
@@ -25,15 +33,35 @@ class StockMovementController extends Controller
         $query->orderBy('created_at', 'desc');
 
         $perPage = $validated['per_page'] ?? 10;
-        $movements = $query->paginate($perPage);
+        $page = $request->get('page', 1);
+        $movements = $query->paginate($perPage, ['*'], 'page', $page);
 
         return response()->json([
             'success' => true,
             'data' => StockMovementResource::collection($movements),
+            'current_page' => $movements->currentPage(),
+            'last_page' => $movements->lastPage(),
+            'per_page' => $movements->perPage(),
+            'total' => $movements->total(),
         ]);
 
     }
 
+
+
+    /**
+     * Получить статистику по складским перемещениям с учетом фильтров.
+     *
+     * Возвращает количество и суммарные изменения по типам перемещений, а также агрегированные итоги:
+     * - общее количество перемещений,
+     * - общее количество поступлений,
+     * - общее количество списаний.
+     *
+     * @param StockMovementFilterRequest $request Запрос с параметрами фильтра.
+     * @param StockMovementFilter $filter Применяет фильтры к запросу.
+     *
+     * @return \Illuminate\Http\JsonResponse JSON с агрегированной статистикой складских перемещений.
+     */
 
     public function statistics(StockMovementFilterRequest $request, StockMovementFilter $filter): JsonResponse
     {

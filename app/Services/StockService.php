@@ -10,6 +10,14 @@ use Exception;
 
 class StockService
 {
+
+    /**
+     * Проверяет наличие требуемого количества товаров на складе.
+     *
+     * @param int $warehouseId ID склада.
+     * @param array<int, array{product_id:int, count:int}> $items Массив товаров с их количеством.
+     * @return bool true, если все товары доступны в нужном количестве, иначе false.
+     */
     public function checkAvailability(int $warehouseId, array $items): bool
     {
         foreach ($items as $item) {
@@ -26,6 +34,18 @@ class StockService
 
         return true;
     }
+
+
+    /**
+     * Резервирует товары на складе, уменьшая их количество.
+     *
+     * @param int $warehouseId ID склада.
+     * @param array<int, array{product_id:int, count:int}> $items Массив товаров с их количеством для резервирования.
+     * @param int|null $orderId ID заказа, для которого резервируются товары (может быть null).
+     * @param string $movementType Тип движения для записи в StockMovement (по умолчанию TYPE_ORDER_CREATED).
+     *
+     * @throws \Exception Если товар не найден или недостаточно на складе.
+     */
 
     public function reserveStock(int $warehouseId, array $items, ?int $orderId = null, string $movementType = StockMovement::TYPE_ORDER_CREATED): void
     {
@@ -48,11 +68,10 @@ class StockService
                 $stock->stock -= $item['count'];
                 $stock->save();
 
-                // Записываем движение товара
                 StockMovement::create([
                     'product_id' => $item['product_id'],
                     'warehouse_id' => $warehouseId,
-                    'quantity_change' => -$item['count'], // отрицательное значение - расход
+                    'quantity_change' => -$item['count'],
                     'movement_type' => $movementType,
                     'description' => $this->getMovementDescription($movementType, $item['count']),
                     'order_id' => $orderId,
@@ -62,6 +81,16 @@ class StockService
             }
         });
     }
+
+
+    /**
+     * Возвращает товары на склад, увеличивая их количество.
+     *
+     * @param int $warehouseId ID склада.
+     * @param array<int, array{product_id:int, count:int}> $items Массив товаров с их количеством для возврата.
+     * @param int|null $orderId ID заказа (может быть null).
+     * @param string $movementType Тип движения для записи в StockMovement (по умолчанию TYPE_ORDER_CANCELED).
+     */
 
     public function returnStock(int $warehouseId, array $items, ?int $orderId = null, string $movementType = StockMovement::TYPE_ORDER_CANCELED): void
     {
@@ -73,7 +102,6 @@ class StockService
                     ->first();
 
                 if (!$stock) {
-                    // Создаем запись о товаре на складе, если её нет
                     $stock = Stock::create([
                         'warehouse_id' => $warehouseId,
                         'product_id' => $item['product_id'],
@@ -85,11 +113,11 @@ class StockService
                 $stock->stock += $item['count'];
                 $stock->save();
 
-                // Записываем движение товара
+
                 StockMovement::create([
                     'product_id' => $item['product_id'],
                     'warehouse_id' => $warehouseId,
-                    'quantity_change' => $item['count'], // положительное значение - приход
+                    'quantity_change' => $item['count'],
                     'movement_type' => $movementType,
                     'description' => $this->getMovementDescription($movementType, $item['count']),
                     'order_id' => $orderId,
@@ -100,41 +128,37 @@ class StockService
         });
     }
 
+    /**
+     * Обновляет остатки товара при изменении заказа.
+     *
+     * Возвращает старые товары на склад, проверяет наличие новых и резервирует их.
+     *
+     * @param Order $order Обновляемый заказ.
+     * @param array<int, array{product_id:int, count:int}> $oldItems Старые товары заказа.
+     * @param array<int, array{product_id:int, count:int}> $newItems Новые товары заказа.
+     *
+     * @throws \Exception Если недостаточно товаров для обновления.
+     */
+
     public function updateOrderStock(Order $order, array $oldItems, array $newItems): void
     {
+        if (!$this->checkAvailability($order->warehouse_id, $newItems)) {
+            throw new Exception('Недостаточно товаров на складе для обновления заказа');
+        }
+
         DB::transaction(function () use ($order, $oldItems, $newItems) {
-            // Возвращаем старые товары
             $this->returnStock($order->warehouse_id, $oldItems, $order->id, StockMovement::TYPE_ORDER_UPDATED);
-
-            // Проверяем доступность новых товаров
-            if (!$this->checkAvailability($order->warehouse_id, $newItems)) {
-                throw new Exception('Недостаточно товаров на складе для обновления заказа');
-            }
-
-            // Списываем новые товары
             $this->reserveStock($order->warehouse_id, $newItems, $order->id, StockMovement::TYPE_ORDER_UPDATED);
         });
     }
 
-    public function getStocksWithWarehouses()
-    {
-        return Stock::with(['product', 'warehouse'])
-            ->get()
-            ->groupBy('warehouse_id')
-            ->map(function ($stocks) {
-                return $stocks->map(function ($stock) {
-                    return [
-                        'product_id' => $stock->product_id,
-                        'product_name' => $stock->product->name,
-                        'product_price' => $stock->product->price,
-                        'stock' => $stock->stock,
-                    ];
-                });
-            });
-    }
 
     /**
-     * Получить описание движения товара
+     * Получить описание движения товара для записи в StockMovement.
+     *
+     * @param string $movementType Тип движения.
+     * @param int $quantity Количество товара, участвующее в движении.
+     * @return string Текстовое описание движения.
      */
     private function getMovementDescription(string $movementType, int $quantity): string
     {
